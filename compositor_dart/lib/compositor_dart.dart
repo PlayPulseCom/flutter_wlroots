@@ -1,3 +1,4 @@
+// ignore_for_file: public_member_api_docs, sort_constructors_first
 library compositor_dart;
 
 import 'dart:async';
@@ -11,6 +12,18 @@ import 'package:logging/logging.dart';
 
 enum KeyStatus { released, pressed }
 
+enum WindowEventType { maximize, minimize }
+
+class WindowEvent {
+  final WindowEventType windowEventType;
+  final int handle;
+
+  WindowEvent({
+    required this.windowEventType,
+    required this.handle,
+  });
+}
+
 class Surface {
   // This is actually used as a pointer on the compositor side.
   // It should always be returned exactly as is to the compositiors,
@@ -20,16 +33,30 @@ class Surface {
   final int pid;
   final int gid;
   final int uid;
-
-  final Compositor compositor;
+  final bool isPopup;
+  final int parentHandle;
+  final int prefferedWidth;
+  final int prefferedHeight;
+  bool isMaximized;
+  bool isMinimized;
 
   Surface({
     required this.handle,
     required this.pid,
     required this.gid,
     required this.uid,
-    required this.compositor,
+    required this.isPopup,
+    required this.parentHandle,
+    required this.prefferedWidth,
+    required this.prefferedHeight,
+    this.isMaximized = false,
+    this.isMinimized = false,
   });
+
+  @override
+  String toString() {
+    return 'Surface(handle: $handle, pid: $pid, gid: $gid, uid: $uid, isPopup: $isPopup, parentHandle: $parentHandle, isMaximized: $isMaximized, isMinimized: $isMinimized)';
+  }
 }
 
 class _CompositorPlatform {
@@ -79,9 +106,11 @@ class _CompositorPlatform {
       ],
     );
   }
-}
 
-final Compositor compositor = Compositor();
+  Future<void> surfaceFocusViewWithHandle(int handle) async {
+    await channel.invokeMethod("surface_focus_from_handle", [handle]);
+  }
+}
 
 class Compositor {
   static void initLogger() {
@@ -101,6 +130,7 @@ class Compositor {
   // Emits an event when a surface has been added and is ready to be presented on the screen.
   StreamController<Surface> surfaceMapped = StreamController.broadcast();
   StreamController<Surface> surfaceUnmapped = StreamController.broadcast();
+  StreamController<WindowEvent> windowEvents = StreamController.broadcast();
 
   int? keyToXkb(int physicalKey) => physicalToXkbMap[physicalKey];
 
@@ -111,19 +141,39 @@ class Compositor {
         pid: call.arguments["client_pid"],
         gid: call.arguments["client_gid"],
         uid: call.arguments["client_uid"],
-        compositor: this,
+        isPopup: call.arguments["is_popup"],
+        parentHandle: call.arguments["parent_handle"],
+        prefferedHeight: call.arguments['preffered_height'],
+        prefferedWidth: call.arguments['preffered_width'],
       );
-      surfaces[surface.handle] = surface;
+      surfaces.putIfAbsent(surface.handle, () => surface);
+
       surfaceMapped.add(surface);
     });
 
     platform.addHandler("surface_unmap", (call) async {
       int handle = call.arguments["handle"];
-      Surface surface = surfaces[handle]!;
-      surfaces.remove(handle);
-      surfaceUnmapped.add(surface);
+      if (surfaces.containsKey(handle)) {
+        Surface surface = surfaces[handle]!;
+        surfaces.remove(handle);
+        surfaceUnmapped.add(surface);
+      }
     });
 
     platform.addHandler("flutter/keyevent", (call) async {});
+
+    platform.addHandler('window_maximize', (call) async {
+      int handle = call.arguments['handle'];
+
+      windowEvents.add(WindowEvent(
+          windowEventType: WindowEventType.maximize, handle: handle));
+    });
+
+    platform.addHandler('window_minimize', (call) async {
+      int handle = call.arguments['handle'];
+
+      windowEvents.add(WindowEvent(
+          windowEventType: WindowEventType.minimize, handle: handle));
+    });
   }
 }

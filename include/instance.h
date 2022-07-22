@@ -90,12 +90,22 @@ struct fwr_view {
   uint32_t handle;
 
   struct fwr_instance *instance;
+  struct wlr_xdg_toplevel *xdg_toplevel;
   struct wlr_xdg_surface *surface;
+  uint32_t parent_handle;
+  bool is_popup;
 
   struct wl_listener map;
   struct wl_listener unmap;
   struct wl_listener destroy;
   struct wl_listener commit;
+
+	struct wl_listener request_move;
+ 	struct wl_listener request_resize;
+  struct wl_listener request_maximize;
+	struct wl_listener request_fullscreen;
+	struct wl_listener request_minimize;
+
 };
 
 struct fwr_keyboard {
